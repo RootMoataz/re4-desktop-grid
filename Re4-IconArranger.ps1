@@ -109,7 +109,7 @@ $lstCat = New-Object System.Windows.Forms.ListBox; $lstCat.SelectionMode = 'Mult
 $grpCat.Controls.Add($lstCat)
 
 $lblHelp = New-Object System.Windows.Forms.Label; $lblHelp.Location = '620,12'; $lblHelp.Size = '700,34'
-$lblHelp.Text = "Pick a category on the left and a display above, then click or drag across columns below to give them to it (one category per column).`r`nIcons fill the category's columns row by row, left to right, top to bottom."
+$lblHelp.Text = "Pick a category and a display, then click/drag columns (or the TMP bar) below to give them to it.`r`nOne category per column. Icons fill row by row, left to right; the TMP bar fills left to right."
 $pnl = New-Object System.Windows.Forms.Panel; $pnl.Location = '620,86'; $pnl.Size = '700,556'; $pnl.BackColor = [System.Drawing.Color]::FromArgb(24,24,24)
 $pnl.GetType().GetProperty('DoubleBuffered', [Reflection.BindingFlags]'Instance,NonPublic').SetValue($pnl, $true)
 
@@ -131,8 +131,9 @@ $btnApply.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.
 $lblStatus = New-Object System.Windows.Forms.Label; $lblStatus.Location = '10,786'; $lblStatus.Size = '1300,24'; $lblStatus.ForeColor = [System.Drawing.Color]::DimGray
 $form.Controls.AddRange(@($grpFree, $btnAdd, $btnRem, $cmbCat, $btnNew, $btnRename, $btnDel, $grpCat, $lblNX, $trkX, $valX, $lblNY, $trkY, $valY, $chkOnly, $chkLive, $btnReset, $btnSort, $lblHelp, $cmbMon, $chkFree, $pnl, $chkWall, $btnApply, $lblStatus))
 
+
 # ---------- preview / column picker ----------
-$OX = 6; $OY = 26; $CW = 43; $CH = 52
+$OX = 6; $OY = 26; $CW = 43; $CH = 48
 $pnl.Add_Paint({
   param($s, $e)
   $g = $e.Graphics; $g.SmoothingMode = 'AntiAlias'; $g.TextRenderingHint = 'ClearTypeGridFit'
@@ -140,7 +141,8 @@ $pnl.Add_Paint({
   $mc = [math]::Max(1, $script:Monitors.Count); $mon = $script:Mon
   $layout = @(New-Layout -Names $script:Names -Categories $cats -MonitorCount $mc -FreeAllowed $script:FreeAllowed -SortUnassigned $script:SortUn)
   $owner = @{}; for ($k = 0; $k -lt $cats.Count; $k++) { foreach ($c in $cats[$k].Columns) { if (-not $owner.ContainsKey([int]$c)) { $owner[[int]$c] = $k } } }
-  $cell = @{}; foreach ($p in $layout) { if ($p.Kind -eq 'grid' -and $p.Mon -eq $mon) { $cell["$($p.Col),$($p.Row)"] = $p } }
+  $cell = @{}; $tmpCell = @{}
+  foreach ($p in $layout) { if ($p.Mon -ne $mon) { continue }; if ($p.Kind -eq 'grid') { $cell["$($p.Col),$($p.Row)"] = $p } elseif ($p.Kind -eq 'tmp') { $tmpCell[[int]$p.Col] = $p } }
   $small = New-Object System.Drawing.Font('Segoe UI', 6.5); $hdr = New-Object System.Drawing.Font('Segoe UI', 8, [System.Drawing.FontStyle]::Bold)
   $selK = $cmbCat.SelectedIndex
   $sf = New-Object System.Drawing.StringFormat; $sf.Alignment = 'Center'; $sf.Trimming = 'Character'
@@ -159,44 +161,68 @@ $pnl.Add_Paint({
       if ($p) {
         $fc = if ($p.Cat -ge 0) { Get-CatColor $p.Cat } else { [System.Drawing.Color]::Gray }
         $b = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(200, $fc)); $g.FillRectangle($b, [System.Drawing.Rectangle]::new($rect.X + 12, $rect.Y + 4, 18, 18)); $b.Dispose()
-        $g.DrawString($p.Name, $small, [System.Drawing.Brushes]::White, [System.Drawing.RectangleF]::new($rect.X, $rect.Y + 26, $rect.Width, 34), $sf)
+        $g.DrawString($p.Name, $small, [System.Drawing.Brushes]::White, [System.Drawing.RectangleF]::new($rect.X, $rect.Y + 24, $rect.Width, 24), $sf)
       }
+    }
+  }
+  # TMP bar of the shown display (12 slots), claimable like a column
+  $ty = $OY + 8 * $CH + 4; $tw = 16 * $CW; $tkey = $mon * 100 + 16; $thas = $owner.ContainsKey($tkey)
+  $tc = if ($thas) { Get-CatColor $owner[$tkey] } else { [System.Drawing.Color]::FromArgb(70,70,70) }
+  $b = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(60, $tc)); $g.FillRectangle($b, $OX + 1, $ty, $tw - 2, 30); $b.Dispose()
+  $b = New-Object System.Drawing.SolidBrush $tc; $g.FillRectangle($b, $OX + 1, $ty, 36, 30); $b.Dispose()
+  $g.DrawString('TMP', $hdr, [System.Drawing.Brushes]::White, [System.Drawing.RectangleF]::new($OX + 1, $ty + 8, 36, 16), $sf)
+  $sw = ($tw - 42) / 12
+  for ($t = 0; $t -lt 12; $t++) {
+    $sx = $OX + 40 + $t * $sw
+    $b = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(40,40,40)); $g.FillRectangle($b, [System.Drawing.RectangleF]::new($sx, $ty + 1, $sw - 2, 28)); $b.Dispose()
+    $q = $tmpCell[$t]
+    if ($q) {
+      $fc = if ($q.Cat -ge 0) { Get-CatColor $q.Cat } else { [System.Drawing.Color]::Gray }
+      $b = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(200, $fc)); $g.FillRectangle($b, [System.Drawing.RectangleF]::new($sx + 2, $ty + 3, 8, 8)); $b.Dispose()
+      $g.DrawString($q.Name, $small, [System.Drawing.Brushes]::White, [System.Drawing.RectangleF]::new($sx, $ty + 12, $sw - 2, 16), $sf)
     }
   }
   if ($selK -ge 0) {
     $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::White), 2
-    foreach ($key in $script:Cats[$selK].Columns) { if ([math]::Floor($key / 100) -ne $mon) { continue }; $c = $key % 100; $g.DrawRectangle($pen, $OX + $c * $CW + 1, 1, $CW - 2, $OY + 8 * $CH - 1) }
+    foreach ($key in $script:Cats[$selK].Columns) { if ([math]::Floor($key / 100) -ne $mon) { continue }; $c = $key % 100; if ($c -eq 16) { $g.DrawRectangle($pen, $OX, $ty - 1, $tw, 32) } else { $g.DrawRectangle($pen, $OX + $c * $CW + 1, 1, $CW - 2, $OY + 8 * $CH - 1) } }
     $pen.Dispose()
   }
   # legend
-  $ly = $OY + 8 * $CH + 8
+  $ly = $ty + 30 + 8
   $free = 0; for ($m = 0; $m -lt $mc; $m++) { if ($script:FreeAllowed[$m]) { for ($c = 0; $c -lt 16; $c++) { if (-not $owner.ContainsKey($m * 100 + $c)) { $free++ } } } }
   for ($k = 0; $k -lt $cats.Count; $k++) {
-    $ncol = @($cats[$k].Columns | Where-Object { [math]::Floor($_ / 100) -lt $mc }).Count; $cap = $ncol * 8; $n = @($layout | Where-Object { $_.Cat -eq $k }).Count
+    $kc = @($cats[$k].Columns | Where-Object { [math]::Floor($_ / 100) -lt $mc }); $ncol = @($kc | Where-Object { ($_ % 100) -lt 16 }).Count; $ntmp = @($kc | Where-Object { ($_ % 100) -eq 16 }).Count; $cap = $ncol * 8 + $ntmp * 12; $n = @($layout | Where-Object { $_.Cat -eq $k }).Count
     $over = [math]::Max(0, $n - $cap)
-    $txt = "$($cats[$k].Name): $n icons, $ncol col = $cap slots" + $(if ($over) { "  - $over overflow" } else { '' })
+    $txt = "$($cats[$k].Name): $n icons, $ncol col" + $(if ($ntmp) { " + $ntmp TMP row" } else { "" }) + " = $cap slots" + $(if ($over) { "  - $over overflow" } else { '' })
     $b = New-Object System.Drawing.SolidBrush (Get-CatColor $k); $g.FillRectangle($b, 6 + 340 * ($k % 2), $ly + 16 * [math]::Floor($k / 2) + 3, 10, 10); $b.Dispose()
     $tb = if ($over) { [System.Drawing.Brushes]::Tomato } else { [System.Drawing.Brushes]::Gainsboro }
     $g.DrawString($txt, $small, $tb, 20 + 340 * ($k % 2), $ly + 16 * [math]::Floor($k / 2) + 2)
   }
   $un = @($layout | Where-Object { $_.Cat -eq -1 }).Count; $tmp = @($layout | Where-Object { $_.Kind -eq 'tmp' }).Count; $rt = @($layout | Where-Object { $_.Kind -eq 'right' }).Count
-  $lblStatus.Text = $(if ($script:Note) { "$($script:Note)   ||   " } else { "" }) + "$($script:Names.Count) icons on desktop | $un unassigned -> $free free columns (on displays that allow it) | spill: $tmp in TMP bar, $rt down the right edge"
+  $lblStatus.Text = $(if ($script:Note) { "$($script:Note)   ||   " } else { "" }) + "$($script:Names.Count) icons on desktop | $un unassigned -> $free free columns (on displays that allow it) | $tmp icons in TMP rows, $rt down the right edge"
 })
-function Column-At($x) { $c = [math]::Floor(($x - $OX) / $CW); if ($c -ge 0 -and $c -lt 16) { [int]$c } else { -1 } }
+# 0-15 = grid column, 16 = the TMP bar, -1 = nothing
+function Column-At($x, $y) {
+  $ty = $OY + 8 * $CH + 4
+  if ($x -lt $OX -or $x -gt $OX + 16 * $CW) { return -1 }
+  if ($y -ge $ty -and $y -le $ty + 30) { return 16 }
+  if ($y -ge $ty) { return -1 }
+  $c = [math]::Floor(($x - $OX) / $CW); if ($c -ge 0 -and $c -lt 16) { [int]$c } else { -1 }
+}
 function Paint-Column($col) {
   $sel = Get-Sel; if (-not $sel -or $col -lt 0) { return }
   $c = $script:Mon * 100 + $col
   $other = $false; foreach ($k in 0..($script:Cats.Count - 1)) { if ($script:Cats[$k] -ne $sel -and $script:Cats[$k].Columns.Contains($c)) { $other = $script:Cats[$k].Name } }
-  if ($other) { $script:Note = "Column $($col + 1) on this display already belongs to '$other'."; $pnl.Invalidate(); return }
+  if ($other) { $script:Note = "$(if ($col -eq 16) { 'The TMP row' } else { "Column $($col + 1)" }) on this display already belongs to '$other'."; $pnl.Invalidate(); return }
   if ($script:Drag -eq 'add' -and -not $sel.Columns.Contains($c)) { [void]$sel.Columns.Add($c) }
   if ($script:Drag -eq 'remove' -and $sel.Columns.Contains($c)) { $sel.Columns.Remove($c) }
   $pnl.Invalidate()
 }
 $pnl.Add_MouseDown({ param($s, $e)
   $sel = Get-Sel; if (-not $sel) { $lblStatus.Text = 'Create a category first (New).'; return }
-  $c = Column-At $e.X; if ($c -lt 0) { return }
+  $c = Column-At $e.X $e.Y; if ($c -lt 0) { return }
   $script:Drag = if ($sel.Columns.Contains($script:Mon * 100 + $c)) { 'remove' } else { 'add' }; Paint-Column $c })
-$pnl.Add_MouseMove({ param($s, $e) if ($script:Drag) { Paint-Column (Column-At $e.X) } })
+$pnl.Add_MouseMove({ param($s, $e) if ($script:Drag) { Paint-Column (Column-At $e.X $e.Y) } })
 $pnl.Add_MouseUp({ if ($script:Drag) { $script:Drag = $null; Save-State; Refresh-All } })
 
 # ---------- actions ----------

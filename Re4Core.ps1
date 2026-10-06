@@ -137,8 +137,9 @@ function Get-FillPoint($mon, [double]$ix, [double]$iy) {
 # A column is identified by one int: display * 100 + column (0-15). Old single-display files (0-15) map to display 1.
 # $Categories: objects with .Name, .Icons (names), .Columns (keys).
 # Each category fills its columns display by display, row by row, left to right.
+# A category can also claim a display's TMP row (key display*100+16): 12 slots, filled left to right after its grid slots.
 # Unassigned icons and category overflow go to free columns on displays where $FreeAllowed is true,
-# then the TMP bar, then a block down the right edge of the primary display.
+# then those displays' unclaimed TMP rows, then a block down the right edge of the primary display.
 # Returns one record per icon: Index, Name, Kind (grid|tmp|right), Mon, Col, Row, Cat (-1 = unassigned).
 function New-Layout {
   param([string[]]$Names, $Categories, [int]$MonitorCount = 1, [bool[]]$FreeAllowed = @($true), [bool]$SortUnassigned = $false)
@@ -157,8 +158,10 @@ function New-Layout {
   for ($k = 0; $k -lt @($Categories).Count; $k++) {
     $slots = New-Object System.Collections.ArrayList
     for ($m = 0; $m -lt $MonitorCount; $m++) {
-      $cols = @($claimed.Keys | Where-Object { $claimed[$_] -eq $k -and [math]::Floor($_ / 100) -eq $m } | Sort-Object | ForEach-Object { $_ % 100 })
-      for ($r = 0; $r -lt $script:GridRows; $r++) { foreach ($c in $cols) { [void]$slots.Add(@($m, $c, $r)) } }
+      $cols = @($claimed.Keys | Where-Object { $claimed[$_] -eq $k -and [math]::Floor($_ / 100) -eq $m -and ($_ % 100) -lt 16 } | Sort-Object | ForEach-Object { $_ % 100 })
+      for ($r = 0; $r -lt $script:GridRows; $r++) { foreach ($c in $cols) { [void]$slots.Add(@($m, $c, $r, 'grid')) } }
+      # key display*100+16 = that display's TMP row (12 slots), after the category's grid slots on that display
+      if ($claimed.ContainsKey($m * 100 + 16) -and $claimed[$m * 100 + 16] -eq $k) { for ($t = 0; $t -lt $script:Strip.Count; $t++) { [void]$slots.Add(@($m, $t, 0, 'tmp')) } }
     }
     $s = 0; $seen = @{}
     foreach ($name in @($Categories[$k].Icons)) {   # the category's own icon order decides who gets the first slots
@@ -166,7 +169,7 @@ function New-Layout {
       $seen[$name] = $true
       foreach ($i in $idx[$name]) {
         if ($s -lt $slots.Count) {
-          [void]$out.Add([pscustomobject]@{ Index = $i; Name = $Names[$i]; Kind = 'grid'; Mon = $slots[$s][0]; Col = $slots[$s][1]; Row = $slots[$s][2]; Cat = $k }); $s++
+          [void]$out.Add([pscustomobject]@{ Index = $i; Name = $Names[$i]; Kind = $slots[$s][3]; Mon = $slots[$s][0]; Col = $slots[$s][1]; Row = $slots[$s][2]; Cat = $k }); $s++
         } else { [void]$pool.Add([pscustomobject]@{ Index = $i; Name = $Names[$i]; Cat = $k }) }
       }
     }
@@ -174,14 +177,17 @@ function New-Layout {
   $free = New-Object System.Collections.ArrayList
   for ($m = 0; $m -lt $MonitorCount; $m++) {
     if ($m -ge $FreeAllowed.Count -or -not $FreeAllowed[$m]) { continue }
-    for ($r = 0; $r -lt $script:GridRows; $r++) { for ($c = 0; $c -lt $script:GridCols; $c++) { if (-not $claimed.ContainsKey($m * 100 + $c)) { [void]$free.Add(@($m, $c, $r)) } } }
+    for ($r = 0; $r -lt $script:GridRows; $r++) { for ($c = 0; $c -lt $script:GridCols; $c++) { if (-not $claimed.ContainsKey($m * 100 + $c)) { [void]$free.Add(@($m, $c, $r, 'grid')) } } }
   }
-  $f = 0; $t = 0; $x = 0
+  for ($m = 0; $m -lt $MonitorCount; $m++) {   # then the TMP rows nobody claimed, on displays that allow unassigned icons
+    if ($m -ge $FreeAllowed.Count -or -not $FreeAllowed[$m] -or $claimed.ContainsKey($m * 100 + 16)) { continue }
+    for ($t = 0; $t -lt $script:Strip.Count; $t++) { [void]$free.Add(@($m, $t, 0, 'tmp')) }
+  }
+  $f = 0; $x = 0
   foreach ($p in $pool) {
     $mon = 0
-    if ($f -lt $free.Count)             { $kind = 'grid'; $mon = $free[$f][0]; $col = $free[$f][1]; $row = $free[$f][2]; $f++ }
-    elseif ($t -lt $script:Strip.Count) { $kind = 'tmp'; $col = $t; $row = 0; $t++ }
-    else                                { $kind = 'right'; $col = $x; $row = 0; $x++ }
+    if ($f -lt $free.Count) { $kind = $free[$f][3]; $mon = $free[$f][0]; $col = $free[$f][1]; $row = $free[$f][2]; $f++ }
+    else                    { $kind = 'right'; $col = $x; $row = 0; $x++ }
     [void]$out.Add([pscustomobject]@{ Index = $p.Index; Name = $p.Name; Kind = $kind; Mon = $mon; Col = $col; Row = $row; Cat = $p.Cat })
   }
   $out
@@ -208,7 +214,7 @@ function Invoke-DesktopArrange {
   foreach ($p in $layout) {
     switch ($p.Kind) {
       'grid'  { $c = $script:Cells[$p.Col * $script:GridRows + $p.Row]; $pt = Get-FillPoint $mons[$p.Mon] $c[0] $c[1] }
-      'tmp'   { $pt = Get-FillPoint $mons[0] $script:Strip[$p.Col][0] $script:Strip[$p.Col][1] }
+      'tmp'   { $pt = Get-FillPoint $mons[$p.Mon] $script:Strip[$p.Col][0] $script:Strip[$p.Col][1] }
       'right' { $m = $mons[0]; $pt = @(($m.X + $m.W - 10 - $cellW * ([math]::Floor($p.Col / 10) + 0.5)), ($m.Y + $m.H * 330 / 1440 + $cellH * (($p.Col % 10) + 0.5))) }
     }
     $dx = $GlobalX; $dy = $GlobalY   # nudge: global + the icon's category

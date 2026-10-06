@@ -11,7 +11,8 @@ Turn your Windows 11 desktop into a Resident Evil 4 attaché-case inventory: the
 - **Suggest columns** — gives column-less categories columns (8 icons per column), biggest first.
 - **Sort icons A-Z** — orders icons in every category and the unassigned ones before you apply.
 - **Nudge sliders** — shift icons horizontally/vertically inside their cells (all icons or just the selected category), shown live on the desktop after the first Apply.
-- Overflow icons spill into the "TMP" bar at the bottom, then down the right edge of the primary display.
+- **TMP rows** — the "TMP" bar at the bottom of the wallpaper (12 slots) is clickable per display: give a category a display's TMP row like you would a column, and its icons fill it left to right (after its grid columns on that display).
+- Unassigned icons and overflow use free columns, then unclaimed TMP rows (on displays that allow it), then a block down the right edge of the primary display.
 
 ## Requirements
 
