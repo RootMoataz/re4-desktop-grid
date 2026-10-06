@@ -1,0 +1,18 @@
+{
+  "_help": "First matching rule wins, top to bottom. A rule matches when ANY of its fields match: 'target' = regex on the shortcut target/URL/arguments, 'name' = regex on the icon's display name, 'ext' = file extensions, 'kind' = folder | special (This PC, Recycle Bin...) | lnk | url | file. All regexes are case-insensitive. Edit freely; icons that match nothing stay Unassigned.",
+  "rules": [
+    { "category": "Games", "target": "steam://|steamapps|Epic ?Games|EpicGames|GOG|Ubisoft|uplay://|com\\.epicgames|Battle\\.net|Riot|Rockstar|EA ?(app|Desktop)|[/\\\\]Games?[/\\\\]|Paradox", "name": "^(Steam|Epic Games|Riot|GOG|Ubisoft Connect|Battle\\.net|Minecraft|Paradox|BeamMP|EA)|Launcher|FiveM|FACEIT|Roblox(?! Studio)|Mod Manager|Spider-Man|Mortal Shell|Skyrim|Bannerlord|Sonic Robo|Ghost Recon|Tom Clancy|Beyond-All-Reason|Bionic|Blitz" },
+    { "category": "Browsers", "name": "^(Brave|Firefox|Google Chrome|Chrome|Microsoft Edge|Edge|Opera|Vivaldi|Tor Browser)" },
+    { "category": "Communication", "name": "Discord|Slack|Zoom|Teams|Telegram|WhatsApp|Skype|Signal|Viber" },
+    { "category": "Media", "name": "Spotify|VLC|\\bOBS\\b|Elgato|IPTV|CapCut|Stremio|MPC|Audacity|Plex|Kodi|DaVinci|Premiere|Soundpad|Voicemod|Handbrake|foobar|iTunes|Netflix|YouTube|Streamlabs|Medal" },
+    { "category": "Dev", "target": "JetBrains|Visual Studio|[/\\\\]Git[/\\\\]|PyCharm|IntelliJ|Postman|Docker|Antigravity|Cursor", "name": "Visual Studio|VS ?Code|PyCharm|IntelliJ|JetBrains|\\bGit\\b|Unity Hub|VMware|Roblox Studio|Postman|Antigravity|Cursor|Claude|Android Studio|Docker|PowerShell|Python|Node" },
+    { "category": "Productivity", "name": "Notion|Obsidian|Word|Excel|PowerPoint|Outlook|OneNote|Notepad|Office|Trello|Todoist|Acrobat|DeepSeek|ChatGPT" },
+    { "category": "System", "kind": "special", "name": "This PC|Recycle Bin|Network|Control Panel" },
+    { "category": "Utilities", "name": "CPU-?Z|GPU-?Z|Core Temp|MSI|Afterburner|Malwarebytes|Revo|Uninstaller|Driver|Logitech|NVIDIA|GeForce|HWiNFO|Vortex|FurMark|MEGAsync|WeMod|Focusrite|Audeze|RTX Remix|Lossless Scaling|FrameView|DLSS|Intel|AMD|Razer|Corsair|iCUE|CCleaner|7-Zip|WinRAR|qBittorrent|ICAT" },
+    { "category": "Documents", "ext": [".csv", ".txt", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".md", ".json", ".rtf"] },
+    { "category": "Images", "ext": [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg", ".ico"] },
+    { "category": "Archives", "ext": [".zip", ".rar", ".7z", ".iso", ".tar", ".gz"] },
+    { "category": "Installers", "ext": [".exe", ".msi"] },
+    { "category": "Folders", "kind": "folder" }
+  ]
+}
