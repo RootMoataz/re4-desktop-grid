@@ -16,6 +16,7 @@ $script:Drag = $null   # 'add' | 'remove' while painting columns in the preview
 $script:Mon = 0          # display shown in the preview
 $script:Monitors = @()
 $script:FreeAllowed = [bool[]]@($true)   # per display: may unassigned icons use its free columns?
+$script:ApplyOn = [bool[]]@($true)       # per display: does Apply move its icons?
 $script:Busy = $false
 $script:GX = 0; $script:GY = 0   # global nudge in px
 $script:Applied = $false
@@ -26,7 +27,7 @@ function New-Cat($name) { [pscustomobject]@{ Name = $name; Icons = (New-Object S
 function Cat-Copy { $script:Cats | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Icons = @($_.Icons); Columns = @($_.Columns); OffX = $_.OffX; OffY = $_.OffY } } }
 function Save-State {
   $script:Note = ''
-  $o = [ordered]@{ wallpaper = [bool]$chkWall.Checked; free = @($script:FreeAllowed); nudge = [ordered]@{ x = $script:GX; y = $script:GY }; sortUnassigned = [bool]$script:SortUn; categories = @($script:Cats | ForEach-Object {
+  $o = [ordered]@{ wallpaper = [bool]$chkWall.Checked; free = @($script:FreeAllowed); applyOn = @($script:ApplyOn); nudge = [ordered]@{ x = $script:GX; y = $script:GY }; sortUnassigned = [bool]$script:SortUn; categories = @($script:Cats | ForEach-Object {
     [ordered]@{ name = $_.Name; icons = @($_.Icons); columns = @($_.Columns); offx = $_.OffX; offy = $_.OffY } }) }
   ConvertTo-Json -InputObject $o -Depth 6 | Set-Content -Path $script:LayoutFile -Encoding UTF8
 }
@@ -38,6 +39,7 @@ function Load-State {
     if ($o.sortUnassigned) { $script:SortUn = $true }
     if ($o.nudge) { $script:GX = [int]$o.nudge.x; $script:GY = [int]$o.nudge.y }
     if ($null -ne $o.free) { $script:FreeAllowed = [bool[]]@($o.free) }
+    if ($null -ne $o.applyOn) { $script:ApplyOn = [bool[]]@($o.applyOn) }
     foreach ($c in @($o.categories)) {
       $cat = New-Cat ([string]$c.name); $cat.OffX = [int]$c.offx; $cat.OffY = [int]$c.offy
       foreach ($i in @($c.icons)) { [void]$cat.Icons.Add([string]$i) }
@@ -54,10 +56,13 @@ function Scan-Monitors {
   $fa = New-Object 'System.Collections.Generic.List[bool]'
   for ($i = 0; $i -lt $script:Monitors.Count; $i++) { $fa.Add($(if ($i -lt $script:FreeAllowed.Count) { $script:FreeAllowed[$i] } else { $script:Monitors[$i].Primary })) }
   $script:FreeAllowed = $fa.ToArray()
+  $ap = New-Object 'System.Collections.Generic.List[bool]'
+  for ($i = 0; $i -lt $script:Monitors.Count; $i++) { $ap.Add($(if ($i -lt $script:ApplyOn.Count) { $script:ApplyOn[$i] } else { $true })) }
+  $script:ApplyOn = $ap.ToArray()
   if ($script:Mon -ge $script:Monitors.Count) { $script:Mon = 0 }
   $script:Busy = $true
   $cmbMon.Items.Clear(); foreach ($m in $script:Monitors) { [void]$cmbMon.Items.Add($m.Label) }
-  $cmbMon.SelectedIndex = $script:Mon; $chkFree.Checked = $script:FreeAllowed[$script:Mon]
+  $cmbMon.SelectedIndex = $script:Mon; $chkFree.Checked = $script:FreeAllowed[$script:Mon]; $chkApplyMon.Checked = $script:ApplyOn[$script:Mon]
   $script:Busy = $false
 }
 function Scan-Desktop {
@@ -114,7 +119,8 @@ $pnl = New-Object System.Windows.Forms.Panel; $pnl.Location = '620,86'; $pnl.Siz
 $pnl.GetType().GetProperty('DoubleBuffered', [Reflection.BindingFlags]'Instance,NonPublic').SetValue($pnl, $true)
 
 $cmbMon = New-Object System.Windows.Forms.ComboBox; $cmbMon.DropDownStyle = 'DropDownList'; $cmbMon.Location = '620,52'; $cmbMon.Size = '280,24'
-$chkFree = New-Object System.Windows.Forms.CheckBox; $chkFree.Text = 'Unassigned icons may use free columns on this display'; $chkFree.Location = '912,54'; $chkFree.AutoSize = $true
+$chkFree = New-Object System.Windows.Forms.CheckBox; $chkFree.Text = 'Unassigned may use free columns'; $chkFree.Location = '1090,54'; $chkFree.AutoSize = $true
+$chkApplyMon = New-Object System.Windows.Forms.CheckBox; $chkApplyMon.Text = 'Apply to this display'; $chkApplyMon.Checked = $true; $chkApplyMon.Location = '912,54'; $chkApplyMon.AutoSize = $true
 function New-Lbl($t, $x, $y, $w) { $l = New-Object System.Windows.Forms.Label; $l.Text = $t; $l.Location = "$x,$y"; $l.Size = "$w,20"; $l }
 function New-Trk($x, $y) { $t = New-Object System.Windows.Forms.TrackBar; $t.Minimum = -60; $t.Maximum = 60; $t.TickFrequency = 10; $t.LargeChange = 5; $t.Location = "$x,$y"; $t.Size = '330,40'; $t }
 $lblNX = New-Lbl 'Horizontal' 620 656 74; $trkX = New-Trk 696 650; $valX = New-Lbl '0 px' 1030 656 60
@@ -129,7 +135,7 @@ $btnSort.Font = New-Object System.Drawing.Font('Segoe UI', 10)
 $btnApply = New-Object System.Windows.Forms.Button; $btnApply.Text = 'Apply to desktop'; $btnApply.Location = '1130,740'; $btnApply.Size = '190,36'
 $btnApply.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
 $lblStatus = New-Object System.Windows.Forms.Label; $lblStatus.Location = '10,786'; $lblStatus.Size = '1300,24'; $lblStatus.ForeColor = [System.Drawing.Color]::DimGray
-$form.Controls.AddRange(@($grpFree, $btnAdd, $btnRem, $cmbCat, $btnNew, $btnRename, $btnDel, $grpCat, $lblNX, $trkX, $valX, $lblNY, $trkY, $valY, $chkOnly, $chkLive, $btnReset, $btnSort, $lblHelp, $cmbMon, $chkFree, $pnl, $chkWall, $btnApply, $lblStatus))
+$form.Controls.AddRange(@($grpFree, $btnAdd, $btnRem, $cmbCat, $btnNew, $btnRename, $btnDel, $grpCat, $lblNX, $trkX, $valX, $lblNY, $trkY, $valY, $chkOnly, $chkLive, $btnReset, $btnSort, $lblHelp, $cmbMon, $chkApplyMon, $chkFree, $pnl, $chkWall, $btnApply, $lblStatus))
 
 
 # ---------- preview / column picker ----------
@@ -302,9 +308,11 @@ $chkOnly.Add_CheckedChanged({ Sync-Sliders })
 $btnReset.Add_Click({ $t = Nudge-Target; if ($t) { $t.OffX = 0; $t.OffY = 0 } else { $script:GX = 0; $script:GY = 0 }; Sync-Sliders; Save-State; $pnl.Invalidate(); $tmrLive.Stop(); $tmrLive.Start() })
 $tmrLive.Add_Tick({ $tmrLive.Stop()
   if (-not ($chkLive.Checked -and $script:Applied)) { return }
-  try { [void](Invoke-DesktopArrange -Categories (Cat-Copy) -FreeAllowed $script:FreeAllowed -GlobalX $script:GX -GlobalY $script:GY -SortUnassigned $script:SortUn) } catch { $script:Note = "Live update failed: $_"; $pnl.Invalidate() } })
+  try { [void](Invoke-DesktopArrange -Categories (Cat-Copy) -FreeAllowed $script:FreeAllowed -ApplyOn $script:ApplyOn -GlobalX $script:GX -GlobalY $script:GY -SortUnassigned $script:SortUn) } catch { $script:Note = "Live update failed: $_"; $pnl.Invalidate() } })
 $cmbMon.Add_SelectedIndexChanged({ if ($script:Busy -or $cmbMon.SelectedIndex -lt 0) { return }
-  $script:Mon = $cmbMon.SelectedIndex; $script:Busy = $true; $chkFree.Checked = $script:FreeAllowed[$script:Mon]; $script:Busy = $false; $pnl.Invalidate() })
+  $script:Mon = $cmbMon.SelectedIndex; $script:Busy = $true; $chkFree.Checked = $script:FreeAllowed[$script:Mon]; $chkApplyMon.Checked = $script:ApplyOn[$script:Mon]; $script:Busy = $false; $pnl.Invalidate() })
+$chkApplyMon.Add_CheckedChanged({ if ($script:Busy) { return }
+  $script:ApplyOn[$script:Mon] = [bool]$chkApplyMon.Checked; Save-State; $pnl.Invalidate() })
 $chkFree.Add_CheckedChanged({ if ($script:Busy) { return }
   $script:FreeAllowed[$script:Mon] = [bool]$chkFree.Checked; Save-State; $pnl.Invalidate() })
 $btnNew.Add_Click({
@@ -335,7 +343,7 @@ $btnApply.Add_Click({
   Save-State
   $cats = @(Cat-Copy)
   try {
-    $n = Invoke-DesktopArrange -Categories $cats -FreeAllowed $script:FreeAllowed -GlobalX $script:GX -GlobalY $script:GY -SortUnassigned $script:SortUn -Wallpaper:([bool]$chkWall.Checked) -WallpaperPath (Join-Path $PSScriptRoot 'wallpaper.jpg')
+    $n = Invoke-DesktopArrange -Categories $cats -FreeAllowed $script:FreeAllowed -ApplyOn $script:ApplyOn -GlobalX $script:GX -GlobalY $script:GY -SortUnassigned $script:SortUn -Wallpaper:([bool]$chkWall.Checked) -WallpaperPath (Join-Path $PSScriptRoot 'wallpaper.jpg')
     $script:Applied = $true; Scan-Desktop; Refresh-All; $script:Note = "Applied: arranged $n icons."; $pnl.Invalidate()
   } catch { [System.Windows.Forms.MessageBox]::Show("Apply failed: $_") | Out-Null }
 })

@@ -10,6 +10,7 @@ Add-Type -TypeDefinition @'
 using System; using System.Runtime.InteropServices;
 public static class Re4Native {
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c);
   [DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr a, string c, string t);
@@ -20,7 +21,11 @@ public static class Re4Native {
 }
 '@
 }
-[void][Re4Native]::SetProcessDPIAware()
+# Per-monitor aware (v2) so every display's bounds are physical pixels, matching the desktop list view's coordinates even when
+# displays use different Windows scaling. Falls back to system-aware on builds without it.
+$perMon = $false
+try { $perMon = [Re4Native]::SetProcessDpiAwarenessContext([IntPtr]-4) } catch { }
+if (-not $perMon) { [void][Re4Native]::SetProcessDPIAware() }
 
 if (-not ('Re4Shell' -as [type])) {
 Add-Type -TypeDefinition @'
@@ -195,12 +200,16 @@ function New-Layout {
 
 # Scans the desktop, builds the layout, optionally sets the wallpaper, and moves the icons. Returns the icon count.
 function Invoke-DesktopArrange {
-  param($Categories, [bool[]]$FreeAllowed = @($true), [int]$GlobalX = 0, [int]$GlobalY = 0, [bool]$SortUnassigned = $false, [switch]$Wallpaper, [string]$WallpaperPath)
+  param($Categories, [bool[]]$FreeAllowed = @($true), [bool[]]$ApplyOn = @(), [int]$GlobalX = 0, [int]$GlobalY = 0, [bool]$SortUnassigned = $false, [switch]$Wallpaper, [string]$WallpaperPath)
   $lv = Get-DesktopListView
   $names = Get-DesktopIconNames
   if ($names.Count -ne [int][Re4Native]::SendMessage($lv, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero)) { throw 'Icon list changed while scanning; try again.' }
   $mons = @(Get-Monitors)
-  $layout = New-Layout -Names $names -Categories $Categories -MonitorCount $mons.Count -FreeAllowed $FreeAllowed -SortUnassigned $SortUnassigned
+  $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen   # negative X/Y when a display sits left of / above the primary
+  # ApplyOn: per display, false = leave that display's icons alone (empty array = every display). Unticked displays never take overflow either.
+  $on = @(for ($i = 0; $i -lt $mons.Count; $i++) { $i -ge $ApplyOn.Count -or $ApplyOn[$i] })
+  $fa = @(for ($i = 0; $i -lt $mons.Count; $i++) { $on[$i] -and $i -lt $FreeAllowed.Count -and $FreeAllowed[$i] })
+  $layout = New-Layout -Names $names -Categories $Categories -MonitorCount $mons.Count -FreeAllowed $fa -SortUnassigned $SortUnassigned
   $sp = [int64][Re4Native]::SendMessage($lv, 0x1033, [IntPtr]::Zero, [IntPtr]::Zero)  # LVM_GETITEMSPACING
   $cellW = [int]($sp -band 0xFFFF); $cellH = [int](($sp -shr 16) -band 0xFFFF)
   if ($Wallpaper) {
@@ -212,6 +221,7 @@ function Invoke-DesktopArrange {
   [void][Re4Native]::SetWindowLong($lv, -16, ($st -band (-bnot 0x100)))
   [void][Re4Native]::SendMessage($lv, 0x1036, [IntPtr]0x80000, [IntPtr]0)               # snap-to-grid off
   foreach ($p in $layout) {
+    if (-not $on[$p.Mon]) { continue }   # 'right' block icons carry Mon 0 (the primary display)
     switch ($p.Kind) {
       'grid'  { $c = $script:Cells[$p.Col * $script:GridRows + $p.Row]; $pt = Get-FillPoint $mons[$p.Mon] $c[0] $c[1] }
       'tmp'   { $pt = Get-FillPoint $mons[$p.Mon] $script:Strip[$p.Col][0] $script:Strip[$p.Col][1] }
@@ -219,7 +229,7 @@ function Invoke-DesktopArrange {
     }
     $dx = $GlobalX; $dy = $GlobalY   # nudge: global + the icon's category
     if ($p.Cat -ge 0) { $dx += [int]$Categories[$p.Cat].OffX; $dy += [int]$Categories[$p.Cat].OffY }
-    $x = [int][math]::Round($pt[0] - $cellW / 2 + $dx); $y = [int][math]::Round($pt[1] - $cellH / 2 + $dy)
+    $x = [int][math]::Round($pt[0] - $cellW / 2 + $dx - $vs.X); $y = [int][math]::Round($pt[1] - $cellH / 2 + $dy - $vs.Y)   # list view origin = top-left of the whole desktop
     [void][Re4Native]::SendMessage($lv, 0x100F, [IntPtr]$p.Index, [IntPtr](([int64]($y -band 0xFFFF) -shl 16) -bor [int64]($x -band 0xFFFF)))
   }
   $names.Count

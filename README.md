@@ -7,6 +7,7 @@ Turn your Windows 11 desktop into a Resident Evil 4 attaché-case inventory: the
 - **Scans your desktop** and lists every icon.
 - **Categories** — create them, add icons, and give each category one or more **columns** of the grid. Categories fill their columns row by row, left to right.
 - **Multiple monitors** — each display has its own 16 × 8 grid; a category can span displays. Per display you choose whether unassigned icons may use its free columns.
+- **Choose which displays to apply to** â€” each display has an "Apply to this display" checkbox; icons that belong on an unticked display are left where they are, and unticked displays never receive overflow icons.
 - **Auto-categorize** — sorts icons into categories from what they point to (shortcut target, `steam://` links, file extension, folders) and name rules in `categories.rules.json` (editable, first match wins).
 - **Suggest columns** — gives column-less categories columns (8 icons per column), biggest first.
 - **Sort icons A-Z** — orders icons in every category and the unassigned ones before you apply.
@@ -20,7 +21,7 @@ Windows 11, 64-bit Windows PowerShell 5.1 (built in). No installs.
 
 ## Usage
 
-Double-click **`Re4-IconArranger.cmd`** (or run `Re4-IconArranger.ps1` with `powershell -STA`).
+Double-click **`Re4-IconArranger.cmd`** (or run **`Create-Shortcut.cmd`** once to put a "RE4 Desktop Arranger" shortcut with the RE4 icon on your Desktop) (or run `Re4-IconArranger.ps1` with `powershell -STA`).
 
 1. *Rescan desktop*, then *Auto-categorize unassigned* (or build categories by hand).
 2. Pick a display, select a category, click/drag columns in the grid to give it to that category (or use *Suggest columns*).
@@ -37,7 +38,7 @@ Your setup is saved to `layout.json` next to the scripts (git-ignored). `Set-Re4
 
 ## Known limits
 
-- Developed on a 2560 × 1440 primary display with a 1920 × 1080 display to its right. Placing icons on the second display is untested. A display left of the primary, or displays with different Windows scaling, may place icons off.
+- Developed on a 2560 × 1440 primary display with a 1920 × 1080 display to its right. Placing icons on the second display is untested. Displays left of / above the primary and mixed Windows scaling are handled but only tested in code, not on such a setup. Portrait displays get the landscape wallpaper centre-cropped, so their grid is cut off.
 - Both displays show the same wallpaper.
 - Icons reshuffle if Explorer restarts or the resolution changes; just press Apply again.
 - Applying overwrites your current icon positions (they are not backed up).
