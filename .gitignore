@@ -3,3 +3,6 @@ layout.json
 
 # local tool state
 .omc/
+
+# machine-specific launcher shortcut (absolute paths)
+*.lnk
